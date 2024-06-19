@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <title>WebGL Demo</title>
+        <style>
+.center {
+    margin: 0;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+}
+        </style>
+        <script src="wasm_exec.js"></script>
+    </head>
+
+    <body style="background-color: #DDDDEE;">
+        <div class="center">
+            <canvas id="tCanvas" width="300" height="600" style="border: 1px solid purple;"></canvas>
+            <div>
+            <input type="button" value="Random Circle!" id="tRandomCircle"/>
+            <input type="button" value="Random Ray Origin!" id="tRandomRay"/>
+            </div>
+            <br/>
+            <div>FPS: </div><div id="tFrameCounter">0</div>
+            <br/>
+            <div id="tDebug"></div>
+        </div>
+        <script>
+            const go = new Go();
+            WebAssembly.instantiateStreaming(fetch("main.wasm"), go.importObject).then((result) => {
+                go.run(result.instance);
+            });
+        </script>
+    </body>
+</html>
