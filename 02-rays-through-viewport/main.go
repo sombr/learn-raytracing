@@ -8,9 +8,25 @@ const WIDTH = 300
 const HEIGHT = 600
 
 type Vec3 struct {
-	X float64
-	Y float64
-	Z float64
+	X float32
+	Y float32
+	Z float32
+}
+
+type Number interface {
+    ~int | ~int32 | ~int64 | ~byte | ~float32 | ~float64
+}
+
+func lerp[T Number](a T, b T, t float32) float32 {
+    return float32(a) + float32(b-a)*t
+}
+
+func alerp[T Number](a []T, b []T, t float32) []float32 {
+    c := make([]float32, len(a))
+    for idx := 0; idx < len(a); idx++ {
+        c[idx] = lerp(a[idx], b[idx], t)
+    }
+    return c
 }
 
 func (v Vec3) Neg() Vec3 {
@@ -30,7 +46,7 @@ func (v Vec3) Add(b Vec3) Vec3 {
 }
 
 func (v Vec3) Unit() Vec3 {
-	size := math.Sqrt(v.Dot(v))
+	size := float32(math.Sqrt(float64(v.Dot(v))))
 	return Vec3{
 		X: v.X / size,
 		Y: v.Y / size,
@@ -38,11 +54,15 @@ func (v Vec3) Unit() Vec3 {
 	}
 }
 
-func (v Vec3) Dot(b Vec3) float64 {
+func (v Vec3) Dot(b Vec3) float32 {
 	return v.X*b.X + v.Y*b.Y + v.Z*b.Z
 }
 
-func (v Vec3) Scale(t float64) Vec3 {
+func (v Vec3) Dot64(b Vec3) float64 {
+	return float64(v.X*b.X + v.Y*b.Y + v.Z*b.Z)
+}
+
+func (v Vec3) Scale(t float32) Vec3 {
 	return Vec3{
 		X: v.X * t,
 		Y: v.Y * t,
@@ -52,7 +72,7 @@ func (v Vec3) Scale(t float64) Vec3 {
 
 type Sphere struct {
 	Origin Vec3
-	R      float64
+	R      float32
 }
 
 type Ray struct {
@@ -65,7 +85,7 @@ var sphere *Sphere = &Sphere{
 	R:      0.5,
 }
 
-func (r *Ray) intersectSphere(c *Sphere) (bool, float64, float64) {
+func (r *Ray) intersectSphere(c *Sphere) (bool, float32) {
 	/*
 		   circumference:
 		   x**2 + y**2 + z**2 = r**3
@@ -99,29 +119,43 @@ func (r *Ray) intersectSphere(c *Sphere) (bool, float64, float64) {
 
 	// no intersection
 	if D < 0 {
-		return false, 0, 0
+		return false, 0
 	}
+    Dsq := float32(math.Sqrt(float64(D)))
 
-	t1 := (-B + math.Sqrt(D)) / (2.0 * A)
-	t2 := (-B - math.Sqrt(D)) / (2.0 * A)
+	t1 := (-B + Dsq) / (2.0 * A)
+	t2 := (-B - Dsq) / (2.0 * A)
 
-	if t1 < 0 && t2 < 0 {
+    t := t1
+    if t2 < t1 && t2 >= 0 {
+        t = t2
+    }
+
+	if t < 0 {
 		// backward hit
-		return false, 0, 0
+		return false, 0
 	}
 
-	return true, t1, t2
+	return true, t
 }
 
-func runShader(u, v, aspect float64) [4]byte {
+func runShader(u, v, aspect float32) [4]byte {
 	ray := Ray{
-		Origin: Vec3{u * aspect, v, 100.0},
+		Origin: Vec3{u * aspect, v, 1.0},
 		D:      Vec3{0, 0, -1.0}.Unit(),
 	}
 
-	intersects, _, _ := ray.intersectSphere(sphere)
+	intersects, dist := ray.intersectSphere(sphere)
+    bgr := [4]float32{23.0, 23.0, 23.0, 255.0}
+    obj := [4]float32{200.0, 20.0, 220.0, 255.0}
 	if intersects {
-		return [4]byte{220, 50, 220, 255}
+        hit := ray.Origin.Add( ray.D.Scale(dist) )
+        normal := hit.Add(sphere.Origin.Neg()).Unit()
+
+        cosalpha := normal.Z
+
+        res := alerp(bgr[:], obj[:], cosalpha)
+		return [4]byte{byte(res[0]), byte(res[1]), byte(res[2]), byte(res[3])}
 	}
 
 	return [4]byte{23, 23, 23, 255}
@@ -138,19 +172,19 @@ func main() {
 	ctx := canvas.Call("getContext", "2d")
 
 	var frameCounter int32 = 0
-	var timePrev float64 = 0
+	var timePrev float32 = 0
 
 	imageData := ctx.Call("createImageData", WIDTH, HEIGHT)
 	pixelData := imageData.Get("data")
 
 	var drawFrame js.Func
 	drawFrame = js.FuncOf(func(this js.Value, args []js.Value) any {
-		timeNow := args[0].Float()
+		timeNow := float32(args[0].Float())
 		deltaTime := timeNow - timePrev
 
 		if deltaTime > 1000 {
-			fps := float64(frameCounter*1000) / deltaTime
-			perfStr := fmt.Sprintf("%0.2f last generation: %0.3fms", fps, deltaTime/float64(frameCounter))
+			fps := float32(frameCounter*1000) / deltaTime
+			perfStr := fmt.Sprintf("%0.2f last generation: %0.3fms", fps, deltaTime/float32(frameCounter))
 
 			timePrev = timeNow
 			tFrameCounter.Set("innerHTML", perfStr)
@@ -160,10 +194,10 @@ func main() {
 
 		for row := 0; row < HEIGHT; row++ {
 			for col := 0; col < WIDTH; col++ {
-				u := (float64(col)/float64(WIDTH))*2.0 - 1
-				v := (float64(row)/float64(HEIGHT))*2.0 - 1
+				u := (float32(col)/float32(WIDTH))*2.0 - 1
+				v := (float32(row)/float32(HEIGHT))*2.0 - 1
 
-				aspect := float64(WIDTH) / float64(HEIGHT)
+				aspect := float32(WIDTH) / float32(HEIGHT)
 
 				idx := 4 * (row*WIDTH + col)
 				color := runShader(u, v, aspect)
